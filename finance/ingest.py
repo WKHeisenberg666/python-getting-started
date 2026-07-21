@@ -51,7 +51,15 @@ def _process_document(document: Document) -> Debt | None:
     document.extracted_text = text
 
     debt = None
-    fields = extraction.parse_debt_fields(text, document.original_filename)
+    # The "biggest amount / first text line" heuristic only makes sense for a single-creditor
+    # letter (PDF/scan). Excel files in the drive folder are typically multi-row overviews or
+    # summary exports - running the same heuristic on them picks up grand totals as if they
+    # were one debt. So Excel documents are stored for reference only, never auto-parsed.
+    fields = (
+        extraction.parse_debt_fields(text, document.original_filename)
+        if document.doc_type != Document.DocType.EXCEL
+        else {"amount": None}
+    )
     if fields["amount"] is not None:
         creditor, _ = Creditor.objects.get_or_create(name=fields["creditor_name"])
         debt = Debt.objects.create(

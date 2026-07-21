@@ -41,6 +41,23 @@ class IngestBytesTests(TestCase):
         self.assertEqual(first.document.id, second.document.id)
         self.assertEqual(Document.objects.count(), 1)
 
+    def test_excel_overview_does_not_create_a_bogus_debt(self):
+        import io
+
+        import openpyxl
+
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["FORDERUNGSÜBERSICHT 2026 – Marcel Peters"])
+        sheet.append(["Gesamtsumme aller Forderungen", "209679,90 EUR"])
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+
+        result = ingest.ingest_bytes(buffer.getvalue(), "uebersicht.xlsx", Document.Source.MANUAL_UPLOAD)
+        self.assertTrue(result.created)
+        self.assertIsNone(result.debt)
+        self.assertEqual(Debt.objects.count(), 0)
+
 
 class DashboardViewTests(TestCase):
     def test_dashboard_renders(self):
