@@ -4,6 +4,7 @@ dj-database-url>=2.0,<3.0
 whitenoise[brotli]>=6.0,<7.0
 
 # Finance dashboard: document ingestion (OCR/PDF/Excel) and bank sync
+python-dotenv>=1.0,<2.0
 openpyxl>=3.1,<4.0
 pdfplumber>=0.11,<1.0
 pytesseract>=0.3,<1.0

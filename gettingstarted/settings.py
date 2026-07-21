@@ -15,9 +15,15 @@ import secrets
 from pathlib import Path
 
 import dj_database_url
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load variables from .env for local development (e.g. running `python manage.py ...`
+# directly). This only fills in variables not already set in the environment, so real
+# Heroku config vars always take precedence over whatever is committed in .env.
+load_dotenv(BASE_DIR / ".env")
 
 
 # Before using your Heroku app in production, make sure to review Django's deployment checklist:
