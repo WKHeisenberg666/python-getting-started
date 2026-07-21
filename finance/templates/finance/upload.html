@@ -4,10 +4,11 @@
 
 <h1>Dokument hochladen</h1>
 <p style="color: var(--muted)">
-  JPG, PNG, PDF oder Excel-Datei. Betrag, Gläubiger, Fälligkeit und Referenz werden automatisch
-  erkannt (soweit möglich) und als Schulden-Eintrag angelegt sowie in die Excel-Schuldenliste
-  übertragen. Dieselbe Erkennung läuft automatisch für neue Dateien im lokal synchronisierten
-  Proton-Drive-Ordner.
+  JPG, PNG, PDF oder Excel-Datei. Der Text wird automatisch extrahiert (PDF-Text bzw. OCR bei
+  Bildern) und ist danach unter „Dokumente“ nachlesbar. Es wird bewusst <strong>kein</strong>
+  Schulden-Eintrag automatisch erzeugt – lege ihn nach Prüfung des Dokuments manuell über die
+  Admin-Oberfläche (<code>/admin/</code>) an, dann wird er automatisch in die Excel-Schuldenliste
+  übertragen.
 </p>
 
 <form class="upload" method="post" enctype="multipart/form-data">

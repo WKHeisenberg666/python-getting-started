@@ -26,11 +26,15 @@ class ExtractionParsingTests(TestCase):
 
 
 class IngestBytesTests(TestCase):
-    def test_ingest_creates_debt_when_amount_found(self):
+    def test_ingest_never_auto_creates_a_debt(self):
+        # Heuristic amount/creditor guessing was removed after it produced wrong debts on
+        # real, noisy OCR text - ingestion now only stores the Document + extracted text.
         content = b"%PDF fake content EUR 42,00 for testing"
         result = ingest.ingest_bytes(content, "test.txt", Document.Source.MANUAL_UPLOAD)
         self.assertTrue(result.created)
         self.assertFalse(result.duplicate)
+        self.assertIsNone(result.debt)
+        self.assertEqual(Debt.objects.count(), 0)
 
     def test_duplicate_file_is_not_reingested(self):
         content = b"same bytes"
@@ -57,6 +61,27 @@ class IngestBytesTests(TestCase):
         self.assertTrue(result.created)
         self.assertIsNone(result.debt)
         self.assertEqual(Debt.objects.count(), 0)
+
+
+class DebtExcelSignalTests(TestCase):
+    def test_creating_a_debt_appends_it_to_the_excel_export(self):
+        import tempfile
+
+        import openpyxl
+        from django.test import override_settings
+
+        from .models import Creditor
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            export_path = f"{tmp_dir}/schuldenliste.xlsx"
+            with override_settings(DEBT_EXCEL_EXPORT_PATH=export_path):
+                creditor = Creditor.objects.create(name="Test Inkasso GmbH")
+                Debt.objects.create(creditor=creditor, amount=Decimal("99.90"))
+
+            workbook = openpyxl.load_workbook(export_path)
+            rows = list(workbook.active.iter_rows(values_only=True))
+            self.assertEqual(rows[1][1], "Test Inkasso GmbH")
+            self.assertEqual(rows[1][2], 99.9)
 
 
 class DashboardViewTests(TestCase):

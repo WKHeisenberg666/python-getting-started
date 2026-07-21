@@ -23,8 +23,8 @@ For more information about using Python on Heroku, see these Dev Center articles
 ## Finanz-Dashboard
 
 Neben der Heroku-Beispielseite (`/hello/`) enthält dieses Projekt ein Dashboard unter `/`,
-das Schulden und Kontostände anzeigt und neue Dokumente (JPG/PNG/PDF/Excel) automatisch
-ausliest.
+das Schulden und Kontostände anzeigt und neue Dokumente (JPG/PNG/PDF/Excel) einliest und
+per OCR/Textextraktion durchsuchbar macht.
 
 ### Lokal starten
 
@@ -39,8 +39,7 @@ python manage.py runserver
 Für OCR von Bildern (JPG/PNG) muss zusätzlich die Tesseract-Systembibliothek installiert
 sein (`apt install tesseract-ocr tesseract-ocr-deu` bzw. `brew install tesseract`).
 PDF-Text wird ohne zusätzliche Systemabhängigkeiten gelesen. Fehlt Tesseract, wird das
-Dokument trotzdem gespeichert – nur die automatische Erkennung von Betrag/Gläubiger
-funktioniert dann für Bilder nicht.
+Dokument trotzdem gespeichert, nur ohne extrahierten Text für Bilder.
 
 ### Dokumente hochladen
 
@@ -61,10 +60,15 @@ funktioniert dann für Bilder nicht.
   python manage.py sync_drive_folder --interval 300 # dauerhaft laufen lassen
   ```
 
-  Jede neue Datei wird ausgelesen, Betrag/Gläubiger/Fälligkeit/Referenz werden per Heuristik
-  erkannt, als `Debt`-Eintrag angelegt und zusätzlich als Zeile in die Excel-Datei unter
-  `DEBT_EXCEL_EXPORT_PATH` (Standard: `media/schuldenliste.xlsx`) angehängt – das ist die
-  gleiche Liste, die bisher von Hand geführt wurde.
+  Jede neue Datei wird gespeichert und ihr Text extrahiert (PDF-Text bzw. OCR bei Bildern),
+  damit du sie unter „Dokumente“ im Dashboard nachlesen kannst. Es wird **bewusst keine**
+  Schuld automatisch angelegt: ein Test mit echten, teils schräg fotografierten Schreiben hat
+  gezeigt, dass die einfache Heuristik („größte Zahl im Text = Betrag, erste Zeile =
+  Gläubiger“) bei realen Scans zu oft falsch lag (verstümmelte OCR-Namen, falsche Beträge).
+  Schulden legst du stattdessen bewusst selbst an – z.B. über die Django-Admin-Oberfläche
+  unter `/admin/` (dort kannst du das zugehörige Dokument als Quelle verknüpfen) – und jede
+  neu angelegte Schuld wird automatisch als Zeile an die Excel-Datei unter
+  `DEBT_EXCEL_EXPORT_PATH` (Standard: `media/schuldenliste.xlsx`) angehängt.
 
   **Damit neu gescannte Schreiben automatisch (ohne manuelles Anstoßen) erfasst werden**, liegt
   unter `scripts/com.finanzdashboard.syncdrive.plist` eine macOS-LaunchAgent-Vorlage, die
