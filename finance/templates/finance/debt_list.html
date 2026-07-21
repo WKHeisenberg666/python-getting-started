@@ -6,23 +6,25 @@
 
 <p>
   <a href="{% url 'finance:debt_list' %}" style="color: {% if not selected_status %}var(--accent){% else %}var(--muted){% endif %}">Alle</a>
-  {% for value, label in status_choices %}
-    · <a href="?status={{ value }}" style="color: {% if selected_status == value %}var(--accent){% else %}var(--muted){% endif %}">{{ label }}</a>
+  {% for value in status_choices %}
+    · <a href="?status={{ value }}" style="color: {% if selected_status == value %}var(--accent){% else %}var(--muted){% endif %}">{{ value }}</a>
   {% endfor %}
 </p>
 
 {% if debts %}
 <table>
-  <thead><tr><th>Gläubiger</th><th>Betrag</th><th>Referenz</th><th>Fällig</th><th>Status</th><th>Quelle</th></tr></thead>
+  <thead><tr><th>Gläubiger</th><th>Kategorie</th><th>Betrag</th><th>Offen</th><th>Referenz</th><th>Fällig</th><th>Status</th><th>Quelle</th></tr></thead>
   <tbody>
     {% for debt in debts %}
     <tr>
-      <td>{{ debt.creditor.name }}</td>
+      <td>{{ debt.creditor_name }}{% if debt.collection_agency %}<br><small style="color: var(--muted)">via {{ debt.collection_agency }}</small>{% endif %}</td>
+      <td>{{ debt.category|default:"–" }}</td>
       <td>{{ debt.amount|floatformat:2 }} {{ debt.currency }}</td>
+      <td>{{ debt.open_amount|floatformat:2 }} {{ debt.currency }}</td>
       <td>{{ debt.reference|default:"–" }}</td>
       <td>{{ debt.due_date|default:"–" }}</td>
-      <td><span class="badge {{ debt.status }}">{{ debt.get_status_display }}</span></td>
-      <td>{% if debt.source_document %}<a href="{{ debt.source_document.file.url }}">{{ debt.source_document.original_filename }}</a>{% else %}manuell{% endif %}</td>
+      <td><span class="badge {{ debt.status_class }}">{{ debt.status }}</span></td>
+      <td>{{ debt.source_document|default:"manuell" }}</td>
     </tr>
     {% endfor %}
   </tbody>

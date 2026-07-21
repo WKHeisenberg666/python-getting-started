@@ -221,8 +221,9 @@ PROTON_DRIVE_EXCLUDE_SUBFOLDERS = [
     if name.strip()
 ]
 
-# Excel workbook that mirrors the Debt table (the "Schuldenliste" the user already maintains
-# by hand). Every ingested document appends a row here in addition to the database record.
+# The debt-overview Excel workbook - the single source of truth for debts (see
+# finance/excel_store.py). The dashboard reads it directly on every request, so editing it by
+# hand (e.g. adding a row manually, correcting a value) is immediately reflected there too.
 DEBT_EXCEL_EXPORT_PATH = os.environ.get(
     "DEBT_EXCEL_EXPORT_PATH", str(BASE_DIR / "media" / "schuldenliste.xlsx")
 )

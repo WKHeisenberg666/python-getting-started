@@ -23,8 +23,13 @@ For more information about using Python on Heroku, see these Dev Center articles
 ## Finanz-Dashboard
 
 Neben der Heroku-Beispielseite (`/hello/`) enthält dieses Projekt ein Dashboard unter `/`,
-das Schulden und Kontostände anzeigt und neue Dokumente (JPG/PNG/PDF/Excel) einliest und
-per OCR/Textextraktion durchsuchbar macht.
+das Schulden und Kontostände anzeigt, neue Dokumente per KI ausliest und auf Knopfdruck
+Banktransaktionen gegen offene Schulden abgleicht.
+
+**Architektur in einem Satz:** Die Excel-Datei unter `DEBT_EXCEL_EXPORT_PATH` (Standard:
+`media/schuldenliste.xlsx`) ist die einzige Quelle der Wahrheit für Schulden. Das Dashboard
+liest sie bei jedem Aufruf neu ein – Zeilen von Hand in Excel ergänzen oder korrigieren
+funktioniert also genauso wie über das Dashboard.
 
 ### Lokal starten
 
@@ -32,16 +37,30 @@ per OCR/Textextraktion durchsuchbar macht.
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py seed_demo_data   # optional: Beispieldaten
 python manage.py runserver
 ```
 
 Für OCR von Bildern (JPG/PNG) muss zusätzlich die Tesseract-Systembibliothek installiert
 sein (`apt install tesseract-ocr tesseract-ocr-deu` bzw. `brew install tesseract`).
-PDF-Text wird ohne zusätzliche Systemabhängigkeiten gelesen. Fehlt Tesseract, wird das
-Dokument trotzdem gespeichert, nur ohne extrahierten Text für Bilder.
+PDF-Text wird ohne zusätzliche Systemabhängigkeiten gelesen.
 
-### Dokumente hochladen
+### KI-Analyse der Dokumente (erforderlich)
+
+Betrag/Gläubiger/Kategorie/Fälligkeit werden nicht per Regex geraten, sondern von der
+Claude-API strukturiert aus dem extrahierten Text gelesen (siehe
+`finance/claude_extraction.py`) – das war mit einer einfachen Text-Heuristik bei echten,
+teils schräg fotografierten Schreiben zu unzuverlässig.
+
+1. Eigenen API-Key unter [console.anthropic.com](https://console.anthropic.com) anlegen
+   (eigener Account, eigene Kosten – bei Bildern/Briefen ca. Cent-Beträge pro Dokument mit
+   dem Standardmodell `claude-haiku-4-5-20251001`).
+2. In `.env` eintragen: `ANTHROPIC_API_KEY=sk-ant-...`
+3. Optional ein anderes Modell wählen: `CLAUDE_EXTRACTION_MODEL=claude-sonnet-5`
+
+Ohne gesetzten Key bricht `sync_drive_folder` sofort mit einer klaren Fehlermeldung ab,
+statt stillschweigend nichts zu erkennen.
+
+### Dokumente einlesen
 
 - Manuell: über „Dokument hochladen“ im Dashboard.
 - Automatisch aus Proton Drive: Proton bietet keine öffentliche API für Drittanbieter-Apps.
@@ -52,8 +71,7 @@ Dokument trotzdem gespeichert, nur ohne extrahierten Text für Bilder.
   PROTON_DRIVE_SYNC_FOLDER=/Users/marcel/Library/CloudStorage/ProtonDrive-marcel.peters@proton.me-folder/Forderungen 2026
   ```
 
-  Diesen Wert in `.env` eintragen (bereits vorbereitet, nur auskommentiert) bzw. als
-  Umgebungsvariable setzen, dann:
+  Diesen Wert in `.env` eintragen (bereits vorbereitet), dann:
 
   ```
   python manage.py sync_drive_folder --once        # einmaliger Scan (z.B. per Cron alle paar Minuten)
@@ -62,23 +80,15 @@ Dokument trotzdem gespeichert, nur ohne extrahierten Text für Bilder.
 
   Es werden nur Bilder (jpg/png) und PDFs automatisch gescannt – Excel-Dateien im Ordner
   (Übersichten, Backups, Office-Lock-Dateien wie `~$....xlsx`) werden übersprungen, da sie
-  keine einzelnen Schreiben sind. Unterordner, die keine Schreiben enthalten (bei dir z.B.
-  `dashboard`, `venv`), werden über `PROTON_DRIVE_EXCLUDE_SUBFOLDERS` in `.env`
-  (kommagetrennt) ausgeschlossen.
+  keine einzelnen Schreiben sind und nicht automatisch verändert werden sollen. Unterordner,
+  die keine Schreiben enthalten (bei dir z.B. `dashboard`, `venv`), werden über
+  `PROTON_DRIVE_EXCLUDE_SUBFOLDERS` in `.env` (kommagetrennt) ausgeschlossen.
 
   Jede neue Datei wird gespeichert, ihr Text extrahiert (PDF-Text bzw. OCR bei Bildern) und
-  per Heuristik nach Betrag/Gläubiger/Fälligkeit/Referenz durchsucht (bevorzugt Beträge, die
-  im Text als „Gesamtbetrag“/„Restschuld“/„Zahlbetrag“ o.ä. beschriftet sind, sowie
-  Gläubiger-Zeilen mit Firmen-Markern wie „GmbH“/„Inkasso“/„Amtsgericht“).
-
-  Ein Treffer landet **nicht** direkt als „echte“ Schuld im Dashboard, sondern als Vorschlag
-  im Abschnitt „Vorschläge zur Prüfung“ – dort mit einem Klick auf „Übernehmen“ bestätigen
-  oder auf „Verwerfen“ löschen. Grund: bei echten, teils schräg fotografierten Scans liegt die
-  Heuristik oft genug daneben, dass sie nicht ungeprüft in die Dashboard-Summen einfließen
-  sollte. Erst bestätigte Schulden zählen zu „Offene Schulden“ und werden automatisch als
-  Zeile an die Excel-Datei unter `DEBT_EXCEL_EXPORT_PATH` (Standard:
-  `media/schuldenliste.xlsx`) angehängt. Schulden ohne erkannten Betrag bzw. Korrekturen an
-  einem Vorschlag legst/bearbeitest du über die Django-Admin-Oberfläche unter `/admin/`.
+  von Claude analysiert. Ein erkanntes Forderungsschreiben landet **nicht** direkt als „echte“
+  Schuld im Dashboard, sondern als Zeile mit Status „Vorschlag (KI)“ im Abschnitt
+  „Vorschläge zur Prüfung“ – dort mit einem Klick auf „Übernehmen“ bestätigen (Status wird
+  „Offen“) oder auf „Verwerfen“ löschen. Erst bestätigte Zeilen zählen zu „Offene Schulden“.
 
   **Damit neu gescannte Schreiben automatisch (ohne manuelles Anstoßen) erfasst werden**, liegt
   unter `scripts/com.finanzdashboard.syncdrive.plist` eine macOS-LaunchAgent-Vorlage, die
@@ -87,21 +97,22 @@ Dokument trotzdem gespeichert, nur ohne extrahierten Text für Bilder.
   Macs). Einrichtung:
 
   1. In der Datei alle `<<PROJEKTORDNER>>`-Platzhalter durch den echten absoluten Pfad des
-     Projekts auf deinem Mac ersetzen (der `PROTON_DRIVE_SYNC_FOLDER`-Wert ist bereits auf
-     deinen Ordner `.../ProtonDrive-marcel.peters@proton.me-folder/Forderungen 2026` gesetzt).
+     Projekts auf deinem Mac ersetzen. `PROTON_DRIVE_SYNC_FOLDER` ist dort bereits gesetzt;
+     `ANTHROPIC_API_KEY` musst du zusätzlich ergänzen, da LaunchAgents `.env` nicht automatisch
+     laden.
   2. Datei nach `~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist` kopieren.
   3. `mkdir -p <<PROJEKTORDNER>>/logs && launchctl load ~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist`
   4. Läuft's? `tail -f <<PROJEKTORDNER>>/logs/sync_drive.log`
   5. Stoppen: `launchctl unload ~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist`
 
-### Sparkasse & Revolut anbinden
+### Sparkasse & Revolut anbinden + Bankabgleich
 
 Weder Sparkasse noch Revolut geben Privatkunden einen einfachen persönlichen API-Key. Die
 Anbindung läuft über den PSD2-Open-Banking-Aggregator **GoCardless Bank Account Data**
 (ehemals Nordigen), der beide Banken unterstützt:
 
 1. Kostenlosen Account unter [bankaccountdata.gocardless.com](https://bankaccountdata.gocardless.com)
-   anlegen und `GOCARDLESS_SECRET_ID` / `GOCARDLESS_SECRET_KEY` als Umgebungsvariable setzen.
+   anlegen und `GOCARDLESS_SECRET_ID` / `GOCARDLESS_SECRET_KEY` in `.env` eintragen.
 2. Pro Bank einmalig den Login-/Consent-Flow starten:
    ```
    python manage.py gocardless_connect_bank SPARKASSE_XXXXXXXX
@@ -109,13 +120,22 @@ Anbindung läuft über den PSD2-Open-Banking-Aggregator **GoCardless Bank Accoun
    ```
    Den ausgegebenen Link öffnen und die Bank-Anmeldung abschließen.
 3. Die ausgegebene Requisition-ID in `GOCARDLESS_SPARKASSE_REQUISITION_ID` bzw.
-   `GOCARDLESS_REVOLUT_REQUISITION_ID` eintragen.
-4. Kontostände/Umsätze abholen:
-   ```
-   python manage.py sync_bank_accounts
-   ```
-   Das PSD2-Consent ist maximal 90 Tage gültig und muss danach über Schritt 2 erneuert werden.
-   Für regelmäßige Aktualisierung `sync_bank_accounts` per Cron laufen lassen.
+   `GOCARDLESS_REVOLUT_REQUISITION_ID` eintragen. Das PSD2-Consent ist maximal 90 Tage gültig
+   und muss danach über Schritt 2 erneuert werden.
+
+Danach erscheint im Dashboard bei „Konten“ ein Button **„Jetzt abgleichen“**, der:
+
+- Kontostände/Umsätze live über GoCardless lädt,
+- jede offene/Ratenzahlungs-Schuld gegen die Umsätze abgleicht (Gläubigername kommt im
+  Überweisungstext vor) und Status/„Bereits gezahlt“/„Offener Betrag“ in der Excel-Datei
+  aktualisiert (Status wird automatisch „Bezahlt“, wenn der offene Betrag auf 0 sinkt, oder
+  „Ratenzahlung“, wenn mehrere Teilzahlungen erkannt wurden),
+- wiederkehrende Abbuchungen (gleicher Betrag/Text in ≥2 verschiedenen Monaten) als
+  „monatliche Fixkosten“ erkennt und im Dashboard aufsummiert.
+
+Das Matching ist ein einfacher Textabgleich (kein Wunder-Algorithmus) – Ergebnisse im
+Zweifel in der Excel-Datei gegenprüfen. Für regelmäßige Aktualisierung ohne Klick:
+`python manage.py sync_bank_accounts` per Cron laufen lassen (macht Sync + Abgleich in einem).
 
 Alle Zugangsdaten werden ausschließlich über Umgebungsvariablen konfiguriert, nie im Code
 hinterlegt.

@@ -15,6 +15,7 @@ Usage:
     python manage.py sync_drive_folder --interval 60
 """
 
+import os
 import time
 from pathlib import Path
 
@@ -49,6 +50,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise CommandError(
+                "ANTHROPIC_API_KEY ist nicht gesetzt. Die Dokumenten-Analyse läuft über die "
+                "Claude-API - trag deinen eigenen Anthropic-API-Key in .env ein (siehe README)."
+            )
         folder = settings.PROTON_DRIVE_SYNC_FOLDER
         if not folder:
             raise CommandError(
@@ -103,8 +109,15 @@ class Command(BaseCommand):
 
             if result.duplicate:
                 self.stdout.write(f"  {rel_path}: bereits als Dokument vorhanden (übersprungen)")
+            elif result.extraction_error:
+                self.stdout.write(self.style.WARNING(f"  {rel_path}: {result.extraction_error}"))
+            elif result.debt_proposal:
+                self.stdout.write(
+                    f"  {rel_path}: importiert -> Vorschlag {result.debt_proposal.creditor_name} "
+                    f"{result.debt_proposal.amount} EUR"
+                )
             else:
-                self.stdout.write(f"  {rel_path}: importiert")
+                self.stdout.write(f"  {rel_path}: importiert, kein Forderungsschreiben erkannt")
 
         if found:
             self.stdout.write(self.style.SUCCESS(f"{found} neue Datei(en) verarbeitet."))

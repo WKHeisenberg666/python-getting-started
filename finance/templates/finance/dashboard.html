@@ -27,6 +27,12 @@
     <div class="value">{{ review_debts|length }}</div>
   </div>
   {% endif %}
+  {% if fixed_costs %}
+  <div class="card">
+    <div class="label">Monatliche Fixkosten (erkannt)</div>
+    <div class="value negative">{{ monthly_fixed_costs_total|floatformat:2 }} €</div>
+  </div>
+  {% endif %}
 </div>
 
 {% if review_debts %}
@@ -34,29 +40,25 @@
   <h2>Vorschläge zur Prüfung</h2>
 </div>
 <p style="color: var(--muted); margin-top: -0.5rem;">
-  Automatisch aus Dokumenten erkannt, aber noch nicht bestätigt – zählen noch nicht zu
-  „Offene Schulden“. Bei Fehlern lieber verwerfen und den Eintrag über
-  <a href="/admin/finance/debt/add/">/admin/</a> korrekt anlegen.
+  Von der KI aus Dokumenten erkannt, aber noch nicht bestätigt – zählen noch nicht zu
+  „Offene Schulden“ und stehen noch nicht in der Excel-Liste.
 </p>
 <table>
-  <thead><tr><th>Gläubiger</th><th>Betrag</th><th>Fällig</th><th>Quelle</th><th></th></tr></thead>
+  <thead><tr><th>Gläubiger</th><th>Kategorie</th><th>Betrag</th><th>Fällig</th><th>Zusammenfassung</th><th></th></tr></thead>
   <tbody>
     {% for debt in review_debts %}
     <tr>
-      <td>{{ debt.creditor.name }}</td>
+      <td>{{ debt.creditor_name }}{% if debt.collection_agency %}<br><small style="color: var(--muted)">via {{ debt.collection_agency }}</small>{% endif %}</td>
+      <td>{{ debt.category|default:"–" }}</td>
       <td>{{ debt.amount|floatformat:2 }} {{ debt.currency }}</td>
       <td>{{ debt.due_date|default:"–" }}</td>
-      <td>
-        {% if debt.source_document %}
-        <a href="{{ debt.source_document.file.url }}">{{ debt.source_document.original_filename }}</a>
-        {% else %}–{% endif %}
-      </td>
+      <td style="max-width: 320px; color: var(--muted); font-size: 0.9rem;">{{ debt.summary }}</td>
       <td style="white-space: nowrap;">
-        <form method="post" action="{% url 'finance:confirm_debt' debt.pk %}" style="display: inline;">
+        <form method="post" action="{% url 'finance:confirm_debt' debt.id %}" style="display: inline;">
           {% csrf_token %}
           <button class="btn" type="submit">Übernehmen</button>
         </form>
-        <form method="post" action="{% url 'finance:reject_debt' debt.pk %}" style="display: inline;">
+        <form method="post" action="{% url 'finance:reject_debt' debt.id %}" style="display: inline;">
           {% csrf_token %}
           <button type="submit" style="background: transparent; color: var(--danger); border: 1px solid var(--danger); border-radius: 8px; padding: 0.6rem 1.1rem; cursor: pointer;">Verwerfen</button>
         </form>
@@ -69,6 +71,12 @@
 
 <div class="section-title">
   <h2>Konten</h2>
+  {% if gocardless_configured %}
+  <form method="post" action="{% url 'finance:reconcile_banks' %}">
+    {% csrf_token %}
+    <button class="btn" type="submit">Jetzt abgleichen</button>
+  </form>
+  {% endif %}
 </div>
 {% if accounts %}
 <table>
@@ -85,7 +93,33 @@
   </tbody>
 </table>
 {% else %}
-<div class="empty">Noch keine Konten verbunden. Siehe README für die Einrichtung von Sparkasse/Revolut über den Open-Banking-Connector.</div>
+<div class="empty">
+  Noch keine Konten verbunden.
+  {% if gocardless_configured %}Auf „Jetzt abgleichen“ klicken, um Sparkasse/Revolut erstmalig zu laden.
+  {% else %}Siehe README für die Einrichtung von Sparkasse/Revolut über den Open-Banking-Connector.{% endif %}
+</div>
+{% endif %}
+
+{% if fixed_costs %}
+<div class="section-title">
+  <h2>Erkannte monatliche Fixkosten</h2>
+</div>
+<p style="color: var(--muted); margin-top: -0.5rem;">
+  Wiederkehrende Abbuchungen (gleicher Betrag, gleiche Beschreibung, in mindestens 2
+  verschiedenen Monaten gesehen).
+</p>
+<table>
+  <thead><tr><th>Beschreibung</th><th>Betrag</th><th>Gesehen</th></tr></thead>
+  <tbody>
+    {% for item in fixed_costs %}
+    <tr>
+      <td>{{ item.description }}</td>
+      <td>{{ item.amount|floatformat:2 }} €</td>
+      <td>{{ item.months_seen }}x</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endif %}
 
 <div class="section-title">
@@ -94,20 +128,21 @@
 </div>
 {% if debts %}
 <table>
-  <thead><tr><th>Gläubiger</th><th>Betrag</th><th>Fällig</th><th>Status</th></tr></thead>
+  <thead><tr><th>Gläubiger</th><th>Kategorie</th><th>Betrag</th><th>Fällig</th><th>Status</th></tr></thead>
   <tbody>
     {% for debt in debts %}
     <tr>
-      <td>{{ debt.creditor.name }}</td>
-      <td>{{ debt.amount|floatformat:2 }} {{ debt.currency }}</td>
+      <td>{{ debt.creditor_name }}</td>
+      <td>{{ debt.category|default:"–" }}</td>
+      <td>{{ debt.open_amount|floatformat:2 }} {{ debt.currency }}</td>
       <td>{{ debt.due_date|default:"–" }}</td>
-      <td><span class="badge {{ debt.status }}">{{ debt.get_status_display }}</span></td>
+      <td><span class="badge {{ debt.status_class }}">{{ debt.status }}</span></td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 {% else %}
-<div class="empty">Keine offenen Schulden erfasst.</div>
+<div class="empty">Keine offenen Schulden erfasst. Lade Dokumente hoch oder trage Zeilen direkt in die Excel-Datei ein.</div>
 {% endif %}
 
 <div class="section-title">

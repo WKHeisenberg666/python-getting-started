@@ -1,75 +1,127 @@
+import tempfile
 from decimal import Decimal
+from pathlib import Path
 from unittest import mock
 
 from django.test import TestCase
 
-from . import extraction, ingest
-from .models import Creditor, Debt, Document
+from . import excel_store, extraction, ingest, reconciliation
+from .claude_extraction import ExtractedDebt
+from .models import Account, BankTransaction, Document
 
 
-class ExtractionParsingTests(TestCase):
-    def test_parse_amount_prefers_labeled_total_over_bigger_stray_number(self):
-        text = "Mahngebühr 5,00 EUR\nGesamtbetrag: 1.234,56 EUR\nVergleichsangebot 9.999,00 EUR"
-        self.assertEqual(extraction.parse_amount(text), Decimal("1234.56"))
-
-    def test_parse_amount_falls_back_to_largest_number_without_a_label(self):
-        text = "Mahngebühr 5,00 EUR\nRechnungssumme 42,00 EUR"
-        self.assertEqual(extraction.parse_amount(text), Decimal("42.00"))
-
-    def test_parse_due_date(self):
-        text = "Bitte zahlen Sie bis zum 15.08.2026."
-        self.assertEqual(extraction.parse_due_date(text).isoformat(), "2026-08-15")
-
-    def test_parse_reference(self):
-        text = "Aktenzeichen: AZ-2026-00042"
-        self.assertEqual(extraction.parse_reference(text), "AZ-2026-00042")
-
+class ExtractionHelperTests(TestCase):
     def test_guess_doc_type(self):
         self.assertEqual(extraction.guess_doc_type("brief.pdf"), Document.DocType.PDF)
         self.assertEqual(extraction.guess_doc_type("scan.jpg"), Document.DocType.IMAGE)
         self.assertEqual(extraction.guess_doc_type("liste.xlsx"), Document.DocType.EXCEL)
 
-    def test_guess_creditor_name_prefers_org_marker_line(self):
-        text = "12.03.2026\nAmtsgericht Hagen\nAktenzeichen: 1 C 2/26"
-        self.assertEqual(extraction.guess_creditor_name(text, "brief.pdf"), "Amtsgericht Hagen")
 
-    def test_guess_creditor_name_ignores_junk_lines(self):
-        # Short/symbol-heavy OCR noise should not be picked as a name.
-        text = "--- | ---\nreg -\nHIER STEHT DER ECHTE NAME GmbH\nweiterer Text"
-        self.assertEqual(
-            extraction.guess_creditor_name(text, "brief.pdf"), "HIER STEHT DER ECHTE NAME GmbH"
-        )
+class ExcelStoreTests(TestCase):
+    def test_upsert_then_read_round_trips_a_row(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "schulden.xlsx"
+            row = excel_store.DebtRow(
+                id="abc123",
+                creditor_name="Amtsgericht Hagen",
+                amount=Decimal("228.93"),
+                open_amount=Decimal("228.93"),
+                status=excel_store.STATUS_PROPOSAL,
+            )
+            excel_store.upsert_row(path, row)
+
+            rows = excel_store.read_rows(path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["creditor_name"], "Amtsgericht Hagen")
+            self.assertEqual(rows[0]["amount"], Decimal("228.93"))
+            self.assertEqual(rows[0]["status"], excel_store.STATUS_PROPOSAL)
+
+    def test_upsert_with_same_id_overwrites_instead_of_duplicating(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "schulden.xlsx"
+            excel_store.upsert_row(path, excel_store.DebtRow(id="x", amount=Decimal("10")))
+            excel_store.upsert_row(path, excel_store.DebtRow(id="x", amount=Decimal("20")))
+
+            rows = excel_store.read_rows(path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["amount"], Decimal("20"))
+
+    def test_update_row_changes_only_given_fields(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "schulden.xlsx"
+            excel_store.upsert_row(
+                path,
+                excel_store.DebtRow(id="x", creditor_name="Firma GmbH", amount=Decimal("50")),
+            )
+            excel_store.update_row(path, "x", status=excel_store.STATUS_OPEN)
+
+            rows = excel_store.read_rows(path)
+            self.assertEqual(rows[0]["status"], excel_store.STATUS_OPEN)
+            self.assertEqual(rows[0]["creditor_name"], "Firma GmbH")
+
+    def test_delete_row_removes_it(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "schulden.xlsx"
+            excel_store.upsert_row(path, excel_store.DebtRow(id="x", amount=Decimal("50")))
+            self.assertTrue(excel_store.delete_row(path, "x"))
+            self.assertEqual(excel_store.read_rows(path), [])
+
+    def test_delete_row_returns_false_when_not_found(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "schulden.xlsx"
+            self.assertFalse(excel_store.delete_row(path, "missing"))
 
 
 class IngestBytesTests(TestCase):
-    @mock.patch("finance.extraction.extract_text")
-    def test_pdf_with_recognizable_amount_creates_a_review_draft(self, mock_extract_text):
-        mock_extract_text.return_value = "Amtsgericht Hagen\nGesamtbetrag: 228,93 EUR"
-        result = ingest.ingest_bytes(b"fake pdf bytes", "brief.pdf", Document.Source.MANUAL_UPLOAD)
+    @mock.patch("finance.ingest.claude_extraction.extract_debt_fields_with_ai")
+    def test_pdf_with_recognized_debt_creates_a_proposal_row(self, mock_extract):
+        mock_extract.return_value = ExtractedDebt(
+            creditor_name="Amtsgericht Hagen",
+            collection_agency="",
+            category="Behörde",
+            amount=Decimal("228.93"),
+            due_date=None,
+            reference="AZ-1",
+            summary="Mahnbescheid.",
+        )
+        excel_path = str(Path(tempfile.mkdtemp()) / "s.xlsx")
+        with self.settings(DEBT_EXCEL_EXPORT_PATH=excel_path):
+            result = ingest.ingest_bytes(b"fake pdf bytes", "brief.pdf", Document.Source.MANUAL_UPLOAD)
 
-        self.assertTrue(result.created)
-        self.assertIsNotNone(result.debt)
-        self.assertTrue(result.debt.needs_review)
-        self.assertEqual(result.debt.amount, Decimal("228.93"))
-        self.assertEqual(result.debt.creditor.name, "Amtsgericht Hagen")
+            self.assertTrue(result.created)
+            self.assertIsNotNone(result.debt_proposal)
+            self.assertIsNone(result.extraction_error)
 
-    @mock.patch("finance.extraction.extract_text")
-    def test_pdf_without_recognizable_amount_creates_no_debt(self, mock_extract_text):
-        mock_extract_text.return_value = "Text ohne jeden Geldbetrag."
-        result = ingest.ingest_bytes(b"fake pdf bytes", "brief.pdf", Document.Source.MANUAL_UPLOAD)
+            rows = excel_store.read_rows(excel_path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["status"], excel_store.STATUS_PROPOSAL)
+            self.assertEqual(rows[0]["creditor_name"], "Amtsgericht Hagen")
 
-        self.assertTrue(result.created)
-        self.assertIsNone(result.debt)
+    @mock.patch("finance.ingest.claude_extraction.extract_debt_fields_with_ai")
+    def test_text_not_a_debt_letter_creates_no_row(self, mock_extract):
+        mock_extract.return_value = None
+        with self.settings(DEBT_EXCEL_EXPORT_PATH=str(Path(tempfile.mkdtemp()) / "s.xlsx")):
+            result = ingest.ingest_bytes(b"irrelevant", "foto.jpg", Document.Source.MANUAL_UPLOAD)
+            self.assertTrue(result.created)
+            self.assertIsNone(result.debt_proposal)
 
-    @mock.patch("finance.extraction.extract_text")
-    def test_unrecognized_file_type_never_creates_a_debt(self, mock_extract_text):
-        # Even if the (mocked) extracted text contains a clean amount, non-letter file types
-        # (here: .txt -> DocType.OTHER) are never parsed into a debt.
-        mock_extract_text.return_value = "Firma GmbH\nGesamtbetrag: 42,00 EUR"
-        result = ingest.ingest_bytes(b"irrelevant", "notiz.txt", Document.Source.MANUAL_UPLOAD)
+    @mock.patch("finance.ingest.claude_extraction.extract_debt_fields_with_ai")
+    def test_extraction_error_is_reported_but_does_not_break_ingestion(self, mock_extract):
+        from .claude_extraction import ExtractionError
 
-        self.assertTrue(result.created)
-        self.assertIsNone(result.debt)
+        mock_extract.side_effect = ExtractionError("kein API-Key")
+        with self.settings(DEBT_EXCEL_EXPORT_PATH=str(Path(tempfile.mkdtemp()) / "s.xlsx")):
+            result = ingest.ingest_bytes(b"irrelevant", "brief.pdf", Document.Source.MANUAL_UPLOAD)
+            self.assertTrue(result.created)
+            self.assertIsNone(result.debt_proposal)
+            self.assertEqual(result.extraction_error, "kein API-Key")
+
+    def test_excel_file_is_never_sent_for_ai_extraction(self):
+        with mock.patch("finance.ingest.claude_extraction.extract_debt_fields_with_ai") as mock_extract:
+            result = ingest.ingest_bytes(b"PK\x03\x04fake", "uebersicht.xlsx", Document.Source.MANUAL_UPLOAD)
+            mock_extract.assert_not_called()
+            self.assertTrue(result.created)
+            self.assertIsNone(result.debt_proposal)
 
     def test_duplicate_file_is_not_reingested(self):
         content = b"same bytes"
@@ -79,103 +131,145 @@ class IngestBytesTests(TestCase):
         self.assertEqual(first.document.id, second.document.id)
         self.assertEqual(Document.objects.count(), 1)
 
-    def test_excel_overview_does_not_create_a_bogus_debt(self):
-        import io
 
-        import openpyxl
-
-        workbook = openpyxl.Workbook()
-        sheet = workbook.active
-        sheet.append(["FORDERUNGSÜBERSICHT 2026 – Marcel Peters"])
-        sheet.append(["Gesamtsumme aller Forderungen", "209679,90 EUR"])
-        buffer = io.BytesIO()
-        workbook.save(buffer)
-
-        result = ingest.ingest_bytes(buffer.getvalue(), "uebersicht.xlsx", Document.Source.MANUAL_UPLOAD)
-        self.assertTrue(result.created)
-        self.assertIsNone(result.debt)
-        self.assertEqual(Debt.objects.count(), 0)
-
-
-class DebtExcelSignalTests(TestCase):
-    def test_confirmed_debt_is_appended_to_the_excel_export(self):
-        import tempfile
-
-        import openpyxl
-        from django.test import override_settings
-
+class ReconciliationTests(TestCase):
+    def test_matching_transaction_marks_debt_paid(self):
+        account = Account.objects.create(provider=Account.Provider.SPARKASSE, name="Girokonto")
+        BankTransaction.objects.create(
+            account=account,
+            booking_date="2026-05-01",
+            amount=Decimal("-228.93"),
+            description="Zahlung an Amtsgericht Hagen AZ-1",
+            external_id="tx-1",
+        )
         with tempfile.TemporaryDirectory() as tmp_dir:
-            export_path = f"{tmp_dir}/schuldenliste.xlsx"
-            with override_settings(DEBT_EXCEL_EXPORT_PATH=export_path):
-                creditor = Creditor.objects.create(name="Test Inkasso GmbH")
-                Debt.objects.create(creditor=creditor, amount=Decimal("99.90"))
+            path = Path(tmp_dir) / "schulden.xlsx"
+            excel_store.upsert_row(
+                path,
+                excel_store.DebtRow(
+                    id="x",
+                    creditor_name="Amtsgericht Hagen",
+                    amount=Decimal("228.93"),
+                    open_amount=Decimal("228.93"),
+                    status=excel_store.STATUS_OPEN,
+                ),
+            )
+            summary = reconciliation.reconcile_debts_with_transactions(path)
+            self.assertEqual(summary["matched_debts"], 1)
 
-            workbook = openpyxl.load_workbook(export_path)
-            rows = list(workbook.active.iter_rows(values_only=True))
-            self.assertEqual(rows[1][1], "Test Inkasso GmbH")
-            self.assertEqual(rows[1][2], 99.9)
+            rows = excel_store.read_rows(path)
+            self.assertEqual(rows[0]["status"], excel_store.STATUS_PAID)
+            self.assertEqual(rows[0]["open_amount"], Decimal("0"))
 
-    def test_review_draft_is_not_appended_until_confirmed(self):
-        import tempfile
-        from pathlib import Path
-
-        from django.test import override_settings
-
+    def test_proposal_rows_are_never_touched(self):
+        account = Account.objects.create(provider=Account.Provider.SPARKASSE, name="Girokonto")
+        BankTransaction.objects.create(
+            account=account,
+            booking_date="2026-05-01",
+            amount=Decimal("-50.00"),
+            description="Zahlung an Test GmbH",
+            external_id="tx-1",
+        )
         with tempfile.TemporaryDirectory() as tmp_dir:
-            export_path = f"{tmp_dir}/schuldenliste.xlsx"
-            with override_settings(DEBT_EXCEL_EXPORT_PATH=export_path):
-                creditor = Creditor.objects.create(name="Draft GmbH")
-                debt = Debt.objects.create(
-                    creditor=creditor, amount=Decimal("10.00"), needs_review=True
-                )
-                self.assertFalse(Path(export_path).exists())
+            path = Path(tmp_dir) / "schulden.xlsx"
+            excel_store.upsert_row(
+                path,
+                excel_store.DebtRow(
+                    id="x",
+                    creditor_name="Test GmbH",
+                    amount=Decimal("50.00"),
+                    open_amount=Decimal("50.00"),
+                    status=excel_store.STATUS_PROPOSAL,
+                ),
+            )
+            reconciliation.reconcile_debts_with_transactions(path)
+            rows = excel_store.read_rows(path)
+            self.assertEqual(rows[0]["status"], excel_store.STATUS_PROPOSAL)
 
-                debt.needs_review = False
-                debt.save()
-
-            import openpyxl
-
-            workbook = openpyxl.load_workbook(export_path)
-            rows = list(workbook.active.iter_rows(values_only=True))
-            self.assertEqual(rows[1][1], "Draft GmbH")
+    def test_detect_fixed_costs_needs_at_least_two_distinct_months(self):
+        account = Account.objects.create(provider=Account.Provider.SPARKASSE, name="Girokonto")
+        BankTransaction.objects.create(
+            account=account,
+            booking_date="2026-04-01",
+            amount=Decimal("-9.99"),
+            description="Netflix",
+            external_id="tx-1",
+        )
+        BankTransaction.objects.create(
+            account=account,
+            booking_date="2026-05-01",
+            amount=Decimal("-9.99"),
+            description="Netflix",
+            external_id="tx-2",
+        )
+        BankTransaction.objects.create(
+            account=account,
+            booking_date="2026-05-15",
+            amount=Decimal("-3.00"),
+            description="Einmalkauf",
+            external_id="tx-3",
+        )
+        fixed_costs = reconciliation.detect_fixed_costs()
+        descriptions = [item["description"] for item in fixed_costs]
+        self.assertIn("Netflix", descriptions)
+        self.assertNotIn("Einmalkauf", descriptions)
 
 
 class DashboardViewTests(TestCase):
     def test_dashboard_renders(self):
-        response = self.client.get("/")
-        self.assertEqual(response.status_code, 200)
+        with self.settings(DEBT_EXCEL_EXPORT_PATH=str(Path(tempfile.mkdtemp()) / "s.xlsx")):
+            response = self.client.get("/")
+            self.assertEqual(response.status_code, 200)
 
     def test_upload_page_renders(self):
         response = self.client.get("/upload/")
         self.assertEqual(response.status_code, 200)
 
     def test_dashboard_excludes_review_drafts_from_totals(self):
-        creditor = Creditor.objects.create(name="Draft GmbH")
-        Debt.objects.create(creditor=creditor, amount=Decimal("500.00"), needs_review=True)
-        response = self.client.get("/")
-        self.assertEqual(response.context["total_debt"], 0)
-        self.assertEqual(len(response.context["review_debts"]), 1)
-        self.assertContains(response, "Draft GmbH")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "s.xlsx"
+            excel_store.upsert_row(
+                path,
+                excel_store.DebtRow(
+                    id="x",
+                    creditor_name="Draft GmbH",
+                    amount=Decimal("500.00"),
+                    status=excel_store.STATUS_PROPOSAL,
+                ),
+            )
+            with self.settings(DEBT_EXCEL_EXPORT_PATH=str(path)):
+                response = self.client.get("/")
+                self.assertEqual(response.context["total_debt"], 0)
+                self.assertEqual(len(response.context["review_debts"]), 1)
+                self.assertContains(response, "Draft GmbH")
 
 
 class DebtReviewViewTests(TestCase):
-    def setUp(self):
-        self.creditor = Creditor.objects.create(name="Test GmbH")
-        self.draft = Debt.objects.create(
-            creditor=self.creditor, amount=Decimal("50.00"), needs_review=True
-        )
+    def test_confirm_marks_row_as_open(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "s.xlsx"
+            excel_store.upsert_row(
+                path,
+                excel_store.DebtRow(
+                    id="row-1", creditor_name="Test GmbH", amount=Decimal("50"),
+                    status=excel_store.STATUS_PROPOSAL,
+                ),
+            )
+            with self.settings(DEBT_EXCEL_EXPORT_PATH=str(path)):
+                self.client.post("/schulden/row-1/uebernehmen/")
+                rows = excel_store.read_rows(path)
+                self.assertEqual(rows[0]["status"], excel_store.STATUS_OPEN)
 
-    def test_confirm_marks_debt_as_reviewed(self):
-        self.client.post(f"/schulden/{self.draft.pk}/uebernehmen/")
-        self.draft.refresh_from_db()
-        self.assertFalse(self.draft.needs_review)
-
-    def test_reject_deletes_debt(self):
-        self.client.post(f"/schulden/{self.draft.pk}/verwerfen/")
-        self.assertFalse(Debt.objects.filter(pk=self.draft.pk).exists())
-
-    def test_cannot_confirm_an_already_confirmed_debt_via_this_endpoint(self):
-        self.draft.needs_review = False
-        self.draft.save()
-        response = self.client.post(f"/schulden/{self.draft.pk}/uebernehmen/")
-        self.assertEqual(response.status_code, 404)
+    def test_reject_deletes_row(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "s.xlsx"
+            excel_store.upsert_row(
+                path,
+                excel_store.DebtRow(
+                    id="row-1", creditor_name="Test GmbH", amount=Decimal("50"),
+                    status=excel_store.STATUS_PROPOSAL,
+                ),
+            )
+            with self.settings(DEBT_EXCEL_EXPORT_PATH=str(path)):
+                self.client.post("/schulden/row-1/verwerfen/")
+                self.assertEqual(excel_store.read_rows(path), [])

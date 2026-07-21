@@ -4,11 +4,12 @@
 
 <h1>Dokument hochladen</h1>
 <p style="color: var(--muted)">
-  JPG, PNG, PDF oder Excel-Datei. Bei Bildern/PDFs wird der Text automatisch erkannt und, falls
-  ein Betrag gefunden wird, als <strong>Vorschlag</strong> unter „Vorschläge zur Prüfung“ im
-  Dashboard angelegt – dort mit einem Klick bestätigen oder verwerfen, bevor er in deinen
-  Schuldenstand und die Excel-Liste einfließt. Excel-Dateien werden nur gespeichert, nicht
-  automatisch ausgewertet.
+  JPG, PNG, PDF oder Excel-Datei. Bei Bildern/PDFs wird der Text extrahiert und von Claude (KI)
+  analysiert; wird ein Forderungsschreiben mit Betrag erkannt, landet es als
+  <strong>Vorschlag</strong> unter „Vorschläge zur Prüfung“ im Dashboard – dort mit einem Klick
+  bestätigen oder verwerfen, bevor er in deinen Schuldenstand und die Excel-Liste einfließt.
+  Dafür muss <code>ANTHROPIC_API_KEY</code> gesetzt sein (siehe README). Excel-Dateien werden
+  nur gespeichert, nicht automatisch ausgewertet.
 </p>
 
 <form class="upload" method="post" enctype="multipart/form-data">

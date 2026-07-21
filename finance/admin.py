@@ -1,21 +1,6 @@
 from django.contrib import admin
 
-from .models import Account, BankTransaction, Creditor, Debt, Document, ProcessedFile
-
-
-@admin.register(Creditor)
-class CreditorAdmin(admin.ModelAdmin):
-    list_display = ("name",)
-    search_fields = ("name",)
-
-
-@admin.register(Debt)
-class DebtAdmin(admin.ModelAdmin):
-    list_display = (
-        "creditor", "amount", "currency", "status", "needs_review", "due_date", "created_at",
-    )
-    list_filter = ("needs_review", "status", "currency")
-    search_fields = ("creditor__name", "reference", "description")
+from .models import Account, BankTransaction, Document, ProcessedFile
 
 
 @admin.register(Document)
