@@ -7,14 +7,17 @@ be found again for updates without relying on row position, which shifts as rows
 removed.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from threading import Lock
 
 import openpyxl
+
+logger = logging.getLogger(__name__)
 
 HEADER = [
     "ID",
@@ -123,11 +126,40 @@ def _open_workbook(path: Path):
     return workbook, sheet
 
 
+def _to_decimal(value) -> Decimal:
+    """Tolerates values typed by hand directly into the spreadsheet (e.g. "228,93" with a
+    German-style comma decimal separator, currency symbols, stray whitespace), on top of the
+    plain numbers openpyxl normally hands back. Never raises - a single bad cell shouldn't be
+    able to take down the whole dashboard; it just falls back to 0."""
+    if value is None or value == "":
+        return Decimal("0")
+    if isinstance(value, (int, float, Decimal)):
+        try:
+            return Decimal(str(value))
+        except InvalidOperation:
+            return Decimal("0")
+
+    text = str(value).strip().replace("€", "").replace("EUR", "").strip()
+    if not text:
+        return Decimal("0")
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        pass
+    # German-style "1.234,56" or "228,93": drop thousands dots, comma -> decimal point.
+    normalized = text.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(normalized)
+    except InvalidOperation:
+        logger.warning("Konnte Betrag %r nicht als Zahl lesen, verwende 0.", value)
+        return Decimal("0")
+
+
 def _row_to_dict(row_values) -> dict:
     data = dict(zip(FIELDS, row_values))
-    data["amount"] = Decimal(str(data["amount"] or 0))
-    data["paid_amount"] = Decimal(str(data["paid_amount"] or 0))
-    data["open_amount"] = Decimal(str(data["open_amount"] or 0))
+    data["amount"] = _to_decimal(data["amount"])
+    data["paid_amount"] = _to_decimal(data["paid_amount"])
+    data["open_amount"] = _to_decimal(data["open_amount"])
     data["status_class"] = STATUS_CSS_CLASS.get(data["status"], "open")
     return data
 

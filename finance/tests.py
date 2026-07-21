@@ -17,7 +17,34 @@ class ExtractionHelperTests(TestCase):
         self.assertEqual(extraction.guess_doc_type("liste.xlsx"), Document.DocType.EXCEL)
 
 
+class ToDecimalTests(TestCase):
+    def test_plain_number_types(self):
+        self.assertEqual(excel_store._to_decimal(228.93), Decimal("228.93"))
+        self.assertEqual(excel_store._to_decimal(None), Decimal("0"))
+        self.assertEqual(excel_store._to_decimal(""), Decimal("0"))
+
+    def test_german_manual_entry_with_comma(self):
+        self.assertEqual(excel_store._to_decimal("228,93"), Decimal("228.93"))
+        self.assertEqual(excel_store._to_decimal("1.234,56"), Decimal("1234.56"))
+
+    def test_currency_symbol_is_stripped(self):
+        self.assertEqual(excel_store._to_decimal("€ 228,93"), Decimal("228.93"))
+
+    def test_garbage_falls_back_to_zero_instead_of_raising(self):
+        self.assertEqual(excel_store._to_decimal("kaputt"), Decimal("0"))
+
+
 class ExcelStoreTests(TestCase):
+    def test_reading_a_row_with_a_broken_amount_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "schulden.xlsx"
+            excel_store.upsert_row(
+                path, excel_store.DebtRow(id="x", creditor_name="Firma GmbH", amount=Decimal("1"))
+            )
+            excel_store.update_row(path, "x", amount="nicht-die-zahl")
+            rows = excel_store.read_rows(path)
+            self.assertEqual(rows[0]["amount"], Decimal("0"))
+
     def test_upsert_then_read_round_trips_a_row(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "schulden.xlsx"
