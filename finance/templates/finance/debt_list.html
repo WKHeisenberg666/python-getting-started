@@ -1,0 +1,34 @@
+{% extends "finance/base.html" %}
+{% block title %}Schulden – Finanz-Dashboard{% endblock %}
+{% block content %}
+
+<h1>Schulden</h1>
+
+<p>
+  <a href="{% url 'finance:debt_list' %}" style="color: {% if not selected_status %}var(--accent){% else %}var(--muted){% endif %}">Alle</a>
+  {% for value, label in status_choices %}
+    · <a href="?status={{ value }}" style="color: {% if selected_status == value %}var(--accent){% else %}var(--muted){% endif %}">{{ label }}</a>
+  {% endfor %}
+</p>
+
+{% if debts %}
+<table>
+  <thead><tr><th>Gläubiger</th><th>Betrag</th><th>Referenz</th><th>Fällig</th><th>Status</th><th>Quelle</th></tr></thead>
+  <tbody>
+    {% for debt in debts %}
+    <tr>
+      <td>{{ debt.creditor.name }}</td>
+      <td>{{ debt.amount|floatformat:2 }} {{ debt.currency }}</td>
+      <td>{{ debt.reference|default:"–" }}</td>
+      <td>{{ debt.due_date|default:"–" }}</td>
+      <td><span class="badge {{ debt.status }}">{{ debt.get_status_display }}</span></td>
+      <td>{% if debt.source_document %}<a href="{{ debt.source_document.file.url }}">{{ debt.source_document.original_filename }}</a>{% else %}manuell{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">Keine Schulden in dieser Ansicht.</div>
+{% endif %}
+
+{% endblock %}

@@ -61,15 +61,14 @@ else:
 INSTALLED_APPS = [
     # Use WhiteNoise's runserver implementation instead of the Django default, for dev-prod parity.
     "whitenoise.runserver_nostatic",
-    # Uncomment this and the entry in `urls.py` if you wish to use the Django admin feature:
-    # https://docs.djangoproject.com/en/4.2/ref/contrib/admin/
-    # "django.contrib.admin",
+    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "hello",
+    "finance",
 ]
 
 MIDDLEWARE = [
@@ -173,6 +172,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATIC_URL = "static/"
 
 STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
     # Enable WhiteNoise's GZip and Brotli compression of static assets:
     # https://whitenoise.readthedocs.io/en/latest/django.html#add-compression-and-caching-support
     "staticfiles": {
@@ -189,3 +191,36 @@ WHITENOISE_KEEP_ONLY_HASHED_FILES = True
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# Uploaded/ingested documents (scanned letters, statements, ...)
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+
+# --- Finanz-Dashboard: Finance app configuration -----------------------------------------
+#
+# Local folder that Proton Drive Bridge/the Proton Drive desktop app syncs to disk. The
+# `sync_drive_folder` management command watches this folder and ingests any new files
+# (jpg/png/pdf/xlsx) it finds. Proton has no public third-party Drive API, so this local-sync
+# approach is used instead of talking to Proton's servers directly.
+PROTON_DRIVE_SYNC_FOLDER = os.environ.get("PROTON_DRIVE_SYNC_FOLDER", "")
+
+# Excel workbook that mirrors the Debt table (the "Schuldenliste" the user already maintains
+# by hand). Every ingested document appends a row here in addition to the database record.
+DEBT_EXCEL_EXPORT_PATH = os.environ.get(
+    "DEBT_EXCEL_EXPORT_PATH", str(BASE_DIR / "media" / "schuldenliste.xlsx")
+)
+
+# Open-banking aggregator credentials (GoCardless Bank Account Data API) used by the
+# `sync_bank_accounts` management command to pull balances/transactions for Sparkasse and
+# Revolut. Leave unset to run the dashboard without live bank data. See finance/bank_sync.py
+# and the README for how to obtain these and connect an account.
+GOCARDLESS_SECRET_ID = os.environ.get("GOCARDLESS_SECRET_ID", "")
+GOCARDLESS_SECRET_KEY = os.environ.get("GOCARDLESS_SECRET_KEY", "")
+GOCARDLESS_SPARKASSE_REQUISITION_ID = os.environ.get(
+    "GOCARDLESS_SPARKASSE_REQUISITION_ID", ""
+)
+GOCARDLESS_REVOLUT_REQUISITION_ID = os.environ.get(
+    "GOCARDLESS_REVOLUT_REQUISITION_ID", ""
+)

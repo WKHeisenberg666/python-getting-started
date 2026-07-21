@@ -7,5 +7,8 @@ venv/
 staticfiles/
 db.sqlite3
 
+# Uploaded/ingested documents (scanned letters, statements) - never commit real financial data
+media/
+
 # macOS files
 .DS_Store

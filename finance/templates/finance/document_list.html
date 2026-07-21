@@ -1,0 +1,27 @@
+{% extends "finance/base.html" %}
+{% block title %}Dokumente – Finanz-Dashboard{% endblock %}
+{% block content %}
+
+<h1>Dokumente</h1>
+
+{% if documents %}
+<table>
+  <thead><tr><th>Datei</th><th>Typ</th><th>Quelle</th><th>Hochgeladen</th><th>Status</th><th>Verknüpfte Schuld</th></tr></thead>
+  <tbody>
+    {% for doc in documents %}
+    <tr>
+      <td><a href="{{ doc.file.url }}">{{ doc.original_filename }}</a></td>
+      <td>{{ doc.get_doc_type_display }}</td>
+      <td>{{ doc.get_source_display }}</td>
+      <td>{{ doc.uploaded_at }}</td>
+      <td>{% if doc.is_processed %}verarbeitet{% else %}wartet auf Verarbeitung{% endif %}</td>
+      <td>{% if doc.debt %}{{ doc.debt.creditor.name }} – {{ doc.debt.amount }} {{ doc.debt.currency }}{% else %}–{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">Noch keine Dokumente importiert.</div>
+{% endif %}
+
+{% endblock %}

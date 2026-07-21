@@ -1,0 +1,91 @@
+{% extends "finance/base.html" %}
+{% block title %}Übersicht – Finanz-Dashboard{% endblock %}
+{% block content %}
+
+<div class="cards">
+  <div class="card">
+    <div class="label">Offene Schulden</div>
+    <div class="value negative">{{ total_debt|floatformat:2 }} €</div>
+  </div>
+  <div class="card">
+    <div class="label">Kontostände (Sparkasse + Revolut)</div>
+    <div class="value">{{ total_balance|floatformat:2 }} €</div>
+  </div>
+  <div class="card">
+    <div class="label">Netto</div>
+    <div class="value {% if net_worth < 0 %}negative{% else %}positive{% endif %}">{{ net_worth|floatformat:2 }} €</div>
+  </div>
+  {% if unprocessed_count %}
+  <div class="card">
+    <div class="label">Unverarbeitete Dokumente</div>
+    <div class="value">{{ unprocessed_count }}</div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="section-title">
+  <h2>Konten</h2>
+</div>
+{% if accounts %}
+<table>
+  <thead><tr><th>Bank</th><th>Konto</th><th>Saldo</th><th>Zuletzt synchronisiert</th></tr></thead>
+  <tbody>
+    {% for account in accounts %}
+    <tr>
+      <td>{{ account.get_provider_display }}</td>
+      <td>{{ account.name }} {% if account.iban_masked %}({{ account.iban_masked }}){% endif %}</td>
+      <td>{{ account.balance|floatformat:2 }} {{ account.currency }}</td>
+      <td>{{ account.last_synced_at|default:"noch nicht synchronisiert" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">Noch keine Konten verbunden. Siehe README für die Einrichtung von Sparkasse/Revolut über den Open-Banking-Connector.</div>
+{% endif %}
+
+<div class="section-title">
+  <h2>Größte offene Schulden</h2>
+  <a class="btn" href="{% url 'finance:debt_list' %}">Alle anzeigen</a>
+</div>
+{% if debts %}
+<table>
+  <thead><tr><th>Gläubiger</th><th>Betrag</th><th>Fällig</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for debt in debts %}
+    <tr>
+      <td>{{ debt.creditor.name }}</td>
+      <td>{{ debt.amount|floatformat:2 }} {{ debt.currency }}</td>
+      <td>{{ debt.due_date|default:"–" }}</td>
+      <td><span class="badge {{ debt.status }}">{{ debt.get_status_display }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">Keine offenen Schulden erfasst.</div>
+{% endif %}
+
+<div class="section-title">
+  <h2>Zuletzt eingegangene Dokumente</h2>
+  <a class="btn" href="{% url 'finance:upload' %}">Dokument hochladen</a>
+</div>
+{% if recent_documents %}
+<table>
+  <thead><tr><th>Datei</th><th>Quelle</th><th>Hochgeladen</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for doc in recent_documents %}
+    <tr>
+      <td><a href="{{ doc.file.url }}">{{ doc.original_filename }}</a></td>
+      <td>{{ doc.get_source_display }}</td>
+      <td>{{ doc.uploaded_at }}</td>
+      <td>{% if doc.is_processed %}verarbeitet{% else %}wartet auf Verarbeitung{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">Noch keine Dokumente importiert.</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "finance/base.html" %}
+{% block title %}Dokument hochladen – Finanz-Dashboard{% endblock %}
+{% block content %}
+
+<h1>Dokument hochladen</h1>
+<p style="color: var(--muted)">
+  JPG, PNG, PDF oder Excel-Datei. Betrag, Gläubiger, Fälligkeit und Referenz werden automatisch
+  erkannt (soweit möglich) und als Schulden-Eintrag angelegt sowie in die Excel-Schuldenliste
+  übertragen. Dieselbe Erkennung läuft automatisch für neue Dateien im lokal synchronisierten
+  Proton-Drive-Ordner.
+</p>
+
+<form class="upload" method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <label for="file">Datei</label>
+  <input type="file" id="file" name="file" accept=".jpg,.jpeg,.png,.pdf,.xlsx,.xlsm" required>
+  <button class="btn" type="submit">Hochladen &amp; verarbeiten</button>
+</form>
+
+{% endblock %}
