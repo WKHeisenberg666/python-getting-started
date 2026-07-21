@@ -54,6 +54,13 @@ FIELDS = [
     "source_document",
 ]
 
+class IncompatibleWorkbookError(Exception):
+    """Raised when a workbook's header row doesn't match the current schema - e.g. a file left
+    over from an older version of this tool. Rather than silently misreading columns (a number
+    ending up in the "creditor" field, a filename in "amount", ...), this is raised so the
+    caller can tell the user to rename/delete the old file instead of crashing on garbage data."""
+
+
 STATUS_PROPOSAL = "Vorschlag (KI)"
 STATUS_OPEN = "Offen"
 STATUS_INSTALLMENT = "Ratenzahlung"
@@ -112,12 +119,25 @@ class DebtRow:
         ]
 
 
+def _header_matches(sheet) -> bool:
+    first_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
+    if first_row is None:
+        return False
+    return list(first_row[: len(HEADER)]) == HEADER
+
+
 def _open_workbook(path: Path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         workbook = openpyxl.load_workbook(path)
         sheet = workbook.active
+        if not _header_matches(sheet):
+            raise IncompatibleWorkbookError(
+                f"{path} hat nicht die erwarteten Spalten (vermutlich ein altes Dateiformat). "
+                "Datei umbenennen oder löschen, damit an ihrer Stelle eine neue mit dem "
+                "richtigen Format angelegt wird."
+            )
         return workbook, sheet
     workbook = openpyxl.Workbook()
     sheet = workbook.active

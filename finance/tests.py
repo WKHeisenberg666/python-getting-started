@@ -35,6 +35,37 @@ class ToDecimalTests(TestCase):
 
 
 class ExcelStoreTests(TestCase):
+    def test_old_format_workbook_raises_incompatible_error_instead_of_misreading(self):
+        import openpyxl
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "schulden.xlsx"
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            # Old 8-column schema from before the Excel-as-source-of-truth rewrite.
+            sheet.append(["Erfasst am", "Gläubiger", "Betrag", "Währung", "Fällig am", "Referenz", "Status", "Quelldokument"])
+            sheet.append(["21.07.2026", "HEID", 234.67, "EUR", None, None, "Offen", "brief.jpeg"])
+            workbook.save(path)
+
+            with self.assertRaises(excel_store.IncompatibleWorkbookError):
+                excel_store.read_rows(path)
+
+    def test_dashboard_shows_error_instead_of_500_for_incompatible_workbook(self):
+        import openpyxl
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "schulden.xlsx"
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.append(["Erfasst am", "Gläubiger", "Betrag"])
+            sheet.append(["21.07.2026", "HEID", 234.67])
+            workbook.save(path)
+
+            with self.settings(DEBT_EXCEL_EXPORT_PATH=str(path)):
+                response = self.client.get("/")
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "altes Dateiformat")
+
     def test_reading_a_row_with_a_broken_amount_does_not_crash(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "schulden.xlsx"

@@ -22,7 +22,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from ... import ingest
+from ... import excel_store, ingest
 from ...extraction import IMAGE_EXTENSIONS, PDF_EXTENSIONS
 from ...models import Document, ProcessedFile
 
@@ -64,6 +64,11 @@ class Command(BaseCommand):
         folder_path = Path(folder)
         if not folder_path.is_dir():
             raise CommandError(f"PROTON_DRIVE_SYNC_FOLDER does not exist or is not a directory: {folder}")
+
+        try:
+            excel_store.read_rows(settings.DEBT_EXCEL_EXPORT_PATH)
+        except excel_store.IncompatibleWorkbookError as exc:
+            raise CommandError(str(exc)) from exc
 
         if options["once"]:
             self._scan(folder_path)

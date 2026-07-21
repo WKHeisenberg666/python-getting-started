@@ -15,11 +15,21 @@ def _excel_path():
     return settings.DEBT_EXCEL_EXPORT_PATH
 
 
+def _read_rows_safe(request) -> list[dict]:
+    """read_rows(), but an incompatible/old-format workbook becomes a dashboard error message
+    instead of a 500 - the rest of the page (accounts, documents, ...) still renders."""
+    try:
+        return excel_store.read_rows(_excel_path())
+    except excel_store.IncompatibleWorkbookError as exc:
+        messages.error(request, str(exc))
+        return []
+
+
 _CLOSED_STATUSES = (excel_store.STATUS_PROPOSAL, excel_store.STATUS_PAID, excel_store.STATUS_SETTLED)
 
 
 def dashboard(request):
-    rows = excel_store.read_rows(_excel_path())
+    rows = _read_rows_safe(request)
     review_rows = [r for r in rows if r["status"] == excel_store.STATUS_PROPOSAL]
     confirmed_rows = [r for r in rows if r["status"] not in _CLOSED_STATUSES]
 
@@ -54,11 +64,16 @@ def upload_document(request):
             messages.error(request, "Bitte eine Datei auswählen.")
             return redirect("finance:upload")
 
-        result = ingest.ingest_bytes(
-            uploaded_file.read(),
-            uploaded_file.name,
-            Document.Source.MANUAL_UPLOAD,
-        )
+        try:
+            result = ingest.ingest_bytes(
+                uploaded_file.read(),
+                uploaded_file.name,
+                Document.Source.MANUAL_UPLOAD,
+            )
+        except excel_store.IncompatibleWorkbookError as exc:
+            messages.error(request, str(exc))
+            return redirect("finance:dashboard")
+
         if result.duplicate:
             messages.warning(request, f"„{uploaded_file.name}“ wurde bereits importiert.")
         elif result.extraction_error:
@@ -83,9 +98,7 @@ def upload_document(request):
 
 
 def debt_list(request):
-    rows = [
-        r for r in excel_store.read_rows(_excel_path()) if r["status"] != excel_store.STATUS_PROPOSAL
-    ]
+    rows = [r for r in _read_rows_safe(request) if r["status"] != excel_store.STATUS_PROPOSAL]
     status = request.GET.get("status")
     if status:
         rows = [r for r in rows if r["status"] == status]
@@ -111,7 +124,11 @@ def document_list(request):
 
 @require_POST
 def confirm_debt(request, row_id):
-    updated = excel_store.update_row(_excel_path(), row_id, status=excel_store.STATUS_OPEN)
+    try:
+        updated = excel_store.update_row(_excel_path(), row_id, status=excel_store.STATUS_OPEN)
+    except excel_store.IncompatibleWorkbookError as exc:
+        messages.error(request, str(exc))
+        return redirect("finance:dashboard")
     if updated:
         messages.success(request, "Vorschlag übernommen.")
     else:
@@ -121,7 +138,11 @@ def confirm_debt(request, row_id):
 
 @require_POST
 def reject_debt(request, row_id):
-    deleted = excel_store.delete_row(_excel_path(), row_id)
+    try:
+        deleted = excel_store.delete_row(_excel_path(), row_id)
+    except excel_store.IncompatibleWorkbookError as exc:
+        messages.error(request, str(exc))
+        return redirect("finance:dashboard")
     if deleted:
         messages.info(request, "Vorschlag verworfen.")
     else:
@@ -137,7 +158,12 @@ def reconcile_banks(request):
         messages.error(request, str(exc))
         return redirect("finance:dashboard")
 
-    summary = reconciliation.reconcile_debts_with_transactions(_excel_path())
+    try:
+        summary = reconciliation.reconcile_debts_with_transactions(_excel_path())
+    except excel_store.IncompatibleWorkbookError as exc:
+        messages.error(request, str(exc))
+        return redirect("finance:dashboard")
+
     messages.success(
         request,
         f"Bankabgleich fertig: {len(sync_result.synced_account_names)} Konto(en) synchronisiert, "
