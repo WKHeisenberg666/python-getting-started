@@ -34,7 +34,17 @@ def ingest_bytes(content_bytes: bytes, original_filename: str, source: str) -> I
     checksum = Document.checksum_for(content_bytes)
     existing = Document.objects.filter(checksum=checksum).first()
     if existing:
-        return IngestResult(document=existing, created=False, duplicate=True)
+        if not existing.extraction_failed:
+            return IngestResult(document=existing, created=False, duplicate=True)
+        # A previous attempt errored out (e.g. no API credit) rather than actually deciding
+        # this isn't a debt letter - retry instead of treating it as permanently done.
+        debt_proposal, extraction_error = _process_document(existing)
+        return IngestResult(
+            document=existing,
+            created=False,
+            debt_proposal=debt_proposal,
+            extraction_error=extraction_error,
+        )
 
     doc_type = extraction.guess_doc_type(original_filename)
     document = Document(
@@ -66,11 +76,13 @@ def _process_document(document: Document):
 
     debt_proposal = None
     extraction_error = None
+    document.extraction_failed = False
     if document.doc_type in (Document.DocType.PDF, Document.DocType.IMAGE):
         try:
             debt_proposal = claude_extraction.extract_debt_fields_with_ai(text)
         except claude_extraction.ExtractionError as exc:
             extraction_error = str(exc)
+            document.extraction_failed = True
             logger.warning("KI-Extraktion fehlgeschlagen für %s: %s", document.original_filename, exc)
 
         if debt_proposal is not None and debt_proposal.amount is not None:

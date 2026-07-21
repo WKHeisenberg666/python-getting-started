@@ -189,6 +189,30 @@ class IngestBytesTests(TestCase):
         self.assertEqual(first.document.id, second.document.id)
         self.assertEqual(Document.objects.count(), 1)
 
+    @mock.patch("finance.ingest.claude_extraction.extract_debt_fields_with_ai")
+    def test_previously_failed_extraction_is_retried_not_treated_as_duplicate(self, mock_extract):
+        from .claude_extraction import ExtractionError
+
+        content = b"fake pdf bytes"
+        mock_extract.side_effect = ExtractionError("kein Guthaben")
+        with self.settings(DEBT_EXCEL_EXPORT_PATH=str(Path(tempfile.mkdtemp()) / "s.xlsx")):
+            first = ingest.ingest_bytes(content, "brief.pdf", Document.Source.MANUAL_UPLOAD)
+            self.assertEqual(first.extraction_error, "kein Guthaben")
+            first.document.refresh_from_db()
+            self.assertTrue(first.document.extraction_failed)
+
+            mock_extract.side_effect = None
+            mock_extract.return_value = ExtractedDebt(
+                creditor_name="Amtsgericht Hagen", collection_agency="", category="Behörde",
+                amount=Decimal("50"), due_date=None, reference="", summary="",
+            )
+            second = ingest.ingest_bytes(content, "brief.pdf", Document.Source.MANUAL_UPLOAD)
+            self.assertFalse(second.duplicate)
+            self.assertIsNotNone(second.debt_proposal)
+            self.assertEqual(Document.objects.count(), 1)
+            second.document.refresh_from_db()
+            self.assertFalse(second.document.extraction_failed)
+
 
 class ReconciliationTests(TestCase):
     def test_matching_transaction_marks_debt_paid(self):

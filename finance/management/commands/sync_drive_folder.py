@@ -107,9 +107,13 @@ class Command(BaseCommand):
                 continue
 
             result = ingest.ingest_bytes(content, file_path.name, Document.Source.DRIVE_SYNC)
-            ProcessedFile.objects.update_or_create(
-                path=rel_path, defaults={"checksum": checksum}
-            )
+            if not result.extraction_error:
+                # Only remember successful (or "not a debt letter") outcomes. A failed KI
+                # extraction (e.g. no API credit) should be retried on the next run rather
+                # than being treated as permanently done.
+                ProcessedFile.objects.update_or_create(
+                    path=rel_path, defaults={"checksum": checksum}
+                )
             found += 1
 
             if result.duplicate:

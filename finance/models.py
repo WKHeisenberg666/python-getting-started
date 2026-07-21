@@ -33,6 +33,11 @@ class Document(models.Model):
     processed_at = models.DateTimeField(null=True, blank=True)
     extracted_text = models.TextField(blank=True)
 
+    # True when the last KI-extraction attempt errored out (e.g. no/invalid API key, no
+    # credit, network issue) rather than genuinely determining "not a debt letter". Lets
+    # ingestion retry these on the next sync instead of treating them as permanently done.
+    extraction_failed = models.BooleanField(default=False)
+
     class Meta:
         ordering = ["-uploaded_at"]
 
