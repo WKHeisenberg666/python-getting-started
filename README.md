@@ -46,8 +46,15 @@ funktioniert dann für Bilder nicht.
 
 - Manuell: über „Dokument hochladen“ im Dashboard.
 - Automatisch aus Proton Drive: Proton bietet keine öffentliche API für Drittanbieter-Apps.
-  Stattdessen den betreffenden Proton-Drive-Ordner über die **Proton Drive Bridge**/Desktop-App
-  lokal synchronisieren, den Pfad in `PROTON_DRIVE_SYNC_FOLDER` eintragen und dann:
+  Stattdessen wird der Ordner über die **Proton Drive Bridge**/Desktop-App lokal auf den Mac
+  synchronisiert. Bei dir ist das:
+
+  ```
+  PROTON_DRIVE_SYNC_FOLDER=/Users/marcel/Library/CloudStorage/ProtonDrive-marcel.peters@proton.me-folder/Forderungen 2026
+  ```
+
+  Diesen Wert in `.env` eintragen (bereits vorbereitet, nur auskommentiert) bzw. als
+  Umgebungsvariable setzen, dann:
 
   ```
   python manage.py sync_drive_folder --once        # einmaliger Scan (z.B. per Cron alle paar Minuten)
@@ -58,6 +65,20 @@ funktioniert dann für Bilder nicht.
   erkannt, als `Debt`-Eintrag angelegt und zusätzlich als Zeile in die Excel-Datei unter
   `DEBT_EXCEL_EXPORT_PATH` (Standard: `media/schuldenliste.xlsx`) angehängt – das ist die
   gleiche Liste, die bisher von Hand geführt wurde.
+
+  **Damit neu gescannte Schreiben automatisch (ohne manuelles Anstoßen) erfasst werden**, liegt
+  unter `scripts/com.finanzdashboard.syncdrive.plist` eine macOS-LaunchAgent-Vorlage, die
+  `sync_drive_folder --interval 120` dauerhaft im Hintergrund laufen lässt (neue Dateien werden
+  spätestens 2 Minuten nach dem Sync durch Proton Drive verarbeitet, auch nach einem Neustart des
+  Macs). Einrichtung:
+
+  1. In der Datei alle `<<PROJEKTORDNER>>`-Platzhalter durch den echten absoluten Pfad des
+     Projekts auf deinem Mac ersetzen (der `PROTON_DRIVE_SYNC_FOLDER`-Wert ist bereits auf
+     deinen Ordner `.../ProtonDrive-marcel.peters@proton.me-folder/Forderungen 2026` gesetzt).
+  2. Datei nach `~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist` kopieren.
+  3. `mkdir -p <<PROJEKTORDNER>>/logs && launchctl load ~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist`
+  4. Läuft's? `tail -f <<PROJEKTORDNER>>/logs/sync_drive.log`
+  5. Stoppen: `launchctl unload ~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist`
 
 ### Sparkasse & Revolut anbinden
 

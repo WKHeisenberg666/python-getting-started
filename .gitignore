@@ -9,6 +9,7 @@ db.sqlite3
 
 # Uploaded/ingested documents (scanned letters, statements) - never commit real financial data
 media/
+logs/
 
 # macOS files
 .DS_Store

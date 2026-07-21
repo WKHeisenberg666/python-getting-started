@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS LaunchAgent, das sync_drive_folder dauerhaft im Hintergrund laufen lässt, damit neu
+  gescannte Schreiben im Proton-Drive-Ordner zeitnah automatisch ausgelesen werden.
+
+  Installation:
+    1. Alle <<PLATZHALTER>> unten durch die echten absoluten Pfade auf deinem Mac ersetzen
+       (Projektordner, .venv, ggf. `which tesseract`-Pfad falls Homebrew ihn nicht global
+       verlinkt hat).
+    2. Datei kopieren nach: ~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist
+    3. Laden:   launchctl load ~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist
+    4. Prüfen:  tail -f <<PROJEKTORDNER>>/logs/sync_drive.log
+    5. Stoppen: launchctl unload ~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.finanzdashboard.syncdrive</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>&lt;&lt;PROJEKTORDNER&gt;&gt;/.venv/bin/python</string>
+    <string>&lt;&lt;PROJEKTORDNER&gt;&gt;/manage.py</string>
+    <string>sync_drive_folder</string>
+    <string>--interval</string>
+    <string>120</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>&lt;&lt;PROJEKTORDNER&gt;&gt;</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PROTON_DRIVE_SYNC_FOLDER</key>
+    <string>/Users/marcel/Library/CloudStorage/ProtonDrive-marcel.peters@proton.me-folder/Forderungen 2026</string>
+    <key>DEBT_EXCEL_EXPORT_PATH</key>
+    <string>&lt;&lt;PROJEKTORDNER&gt;&gt;/media/schuldenliste.xlsx</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>&lt;&lt;PROJEKTORDNER&gt;&gt;/logs/sync_drive.log</string>
+  <key>StandardErrorPath</key>
+  <string>&lt;&lt;PROJEKTORDNER&gt;&gt;/logs/sync_drive.log</string>
+</dict>
+</plist>
