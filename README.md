@@ -50,7 +50,7 @@ funktioniert dann für Bilder nicht.
   synchronisiert. Bei dir ist das:
 
   ```
-  PROTON_DRIVE_SYNC_FOLDER=/Users/marcel/Library/CloudStorage/ProtonDrive-marcel.peters@proton.me-folder/Forderungen 2026
+  PROTON_DRIVE_SYNC_FOLDER=/Users/marcel/Library/CloudStorage/ProtonDrive-marcel.peters@proton.me-folder/Forderungslisten_2026
   ```
 
   Diesen Wert in `.env` eintragen (bereits vorbereitet, nur auskommentiert) bzw. als
@@ -74,7 +74,7 @@ funktioniert dann für Bilder nicht.
 
   1. In der Datei alle `<<PROJEKTORDNER>>`-Platzhalter durch den echten absoluten Pfad des
      Projekts auf deinem Mac ersetzen (der `PROTON_DRIVE_SYNC_FOLDER`-Wert ist bereits auf
-     deinen Ordner `.../ProtonDrive-marcel.peters@proton.me-folder/Forderungen 2026` gesetzt).
+     deinen Ordner `.../ProtonDrive-marcel.peters@proton.me-folder/Forderungslisten_2026` gesetzt).
   2. Datei nach `~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist` kopieren.
   3. `mkdir -p <<PROJEKTORDNER>>/logs && launchctl load ~/Library/LaunchAgents/com.finanzdashboard.syncdrive.plist`
   4. Läuft's? `tail -f <<PROJEKTORDNER>>/logs/sync_drive.log`

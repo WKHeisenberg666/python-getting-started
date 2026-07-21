@@ -33,7 +33,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PROTON_DRIVE_SYNC_FOLDER</key>
-    <string>/Users/marcel/Library/CloudStorage/ProtonDrive-marcel.peters@proton.me-folder/Forderungen 2026</string>
+    <string>/Users/marcel/Library/CloudStorage/ProtonDrive-marcel.peters@proton.me-folder/Forderungslisten_2026</string>
     <key>DEBT_EXCEL_EXPORT_PATH</key>
     <string>&lt;&lt;PROJEKTORDNER&gt;&gt;/media/schuldenliste.xlsx</string>
   </dict>
