@@ -13,3 +13,6 @@ logs/
 
 # macOS files
 .DS_Store
+
+# Local secrets/config (API keys etc.) - see .env.example for the template
+.env
