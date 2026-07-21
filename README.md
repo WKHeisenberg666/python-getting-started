@@ -66,15 +66,19 @@ Dokument trotzdem gespeichert, nur ohne extrahierten Text für Bilder.
   `dashboard`, `venv`), werden über `PROTON_DRIVE_EXCLUDE_SUBFOLDERS` in `.env`
   (kommagetrennt) ausgeschlossen.
 
-  Jede neue Datei wird gespeichert und ihr Text extrahiert (PDF-Text bzw. OCR bei Bildern),
-  damit du sie unter „Dokumente“ im Dashboard nachlesen kannst. Es wird **bewusst keine**
-  Schuld automatisch angelegt: ein Test mit echten, teils schräg fotografierten Schreiben hat
-  gezeigt, dass die einfache Heuristik („größte Zahl im Text = Betrag, erste Zeile =
-  Gläubiger“) bei realen Scans zu oft falsch lag (verstümmelte OCR-Namen, falsche Beträge).
-  Schulden legst du stattdessen bewusst selbst an – z.B. über die Django-Admin-Oberfläche
-  unter `/admin/` (dort kannst du das zugehörige Dokument als Quelle verknüpfen) – und jede
-  neu angelegte Schuld wird automatisch als Zeile an die Excel-Datei unter
-  `DEBT_EXCEL_EXPORT_PATH` (Standard: `media/schuldenliste.xlsx`) angehängt.
+  Jede neue Datei wird gespeichert, ihr Text extrahiert (PDF-Text bzw. OCR bei Bildern) und
+  per Heuristik nach Betrag/Gläubiger/Fälligkeit/Referenz durchsucht (bevorzugt Beträge, die
+  im Text als „Gesamtbetrag“/„Restschuld“/„Zahlbetrag“ o.ä. beschriftet sind, sowie
+  Gläubiger-Zeilen mit Firmen-Markern wie „GmbH“/„Inkasso“/„Amtsgericht“).
+
+  Ein Treffer landet **nicht** direkt als „echte“ Schuld im Dashboard, sondern als Vorschlag
+  im Abschnitt „Vorschläge zur Prüfung“ – dort mit einem Klick auf „Übernehmen“ bestätigen
+  oder auf „Verwerfen“ löschen. Grund: bei echten, teils schräg fotografierten Scans liegt die
+  Heuristik oft genug daneben, dass sie nicht ungeprüft in die Dashboard-Summen einfließen
+  sollte. Erst bestätigte Schulden zählen zu „Offene Schulden“ und werden automatisch als
+  Zeile an die Excel-Datei unter `DEBT_EXCEL_EXPORT_PATH` (Standard:
+  `media/schuldenliste.xlsx`) angehängt. Schulden ohne erkannten Betrag bzw. Korrekturen an
+  einem Vorschlag legst/bearbeitest du über die Django-Admin-Oberfläche unter `/admin/`.
 
   **Damit neu gescannte Schreiben automatisch (ohne manuelles Anstoßen) erfasst werden**, liegt
   unter `scripts/com.finanzdashboard.syncdrive.plist` eine macOS-LaunchAgent-Vorlage, die

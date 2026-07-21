@@ -11,8 +11,10 @@ class CreditorAdmin(admin.ModelAdmin):
 
 @admin.register(Debt)
 class DebtAdmin(admin.ModelAdmin):
-    list_display = ("creditor", "amount", "currency", "status", "due_date", "created_at")
-    list_filter = ("status", "currency")
+    list_display = (
+        "creditor", "amount", "currency", "status", "needs_review", "due_date", "created_at",
+    )
+    list_filter = ("needs_review", "status", "currency")
     search_fields = ("creditor__name", "reference", "description")
 
 

@@ -12,7 +12,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from . import extraction
-from .models import Debt, Document
+from .models import Creditor, Debt, Document
 
 
 @dataclass
@@ -44,16 +44,34 @@ def ingest_bytes(content_bytes: bytes, original_filename: str, source: str) -> I
 
 
 def _process_document(document: Document) -> Debt | None:
-    """Extracts and stores text for the document, but never auto-creates a Debt.
+    """Extracts text and, for a single-creditor letter (PDF/scan), creates a draft Debt.
 
-    An earlier version guessed "creditor = first text line, amount = biggest number" and
-    created a Debt straight away. On real photographed letters (skewed, noisy OCR) that
-    heuristic produced wrong creditors and wrong amounts often enough that it's not
-    trustworthy without a human looking at it first. Debts are created manually (e.g. via
-    /admin/) after reviewing the extracted text below.
+    The heuristic ("amount labeled as total, else biggest number" / "first name-like line")
+    isn't reliable enough on real, noisy scans to trust blindly - so any Debt it creates is
+    marked needs_review=True and excluded from dashboard totals until a human confirms it.
+    Excel overview/backup files are structurally different (many rows, grand totals) and are
+    never auto-parsed into a single debt at all.
     """
     file_path = Path(document.file.path)
-    document.extracted_text = extraction.extract_text(file_path, document.doc_type)
+    text = extraction.extract_text(file_path, document.doc_type)
+    document.extracted_text = text
+
+    debt = None
+    if document.doc_type in (Document.DocType.PDF, Document.DocType.IMAGE):
+        fields = extraction.parse_debt_fields(text, document.original_filename)
+        if fields["amount"] is not None:
+            creditor, _ = Creditor.objects.get_or_create(name=fields["creditor_name"])
+            debt = Debt.objects.create(
+                creditor=creditor,
+                amount=fields["amount"],
+                due_date=fields["due_date"],
+                reference=fields["reference"],
+                source_document=document,
+                description=f"Automatisch erkannt aus {document.original_filename} – bitte prüfen",
+                needs_review=True,
+            )
+            document.debt = debt
+
     document.processed_at = timezone.now()
     document.save()
-    return None
+    return debt

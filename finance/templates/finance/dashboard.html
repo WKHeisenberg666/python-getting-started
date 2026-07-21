@@ -21,7 +21,51 @@
     <div class="value">{{ unprocessed_count }}</div>
   </div>
   {% endif %}
+  {% if review_debts %}
+  <div class="card">
+    <div class="label">Vorschläge zur Prüfung</div>
+    <div class="value">{{ review_debts|length }}</div>
+  </div>
+  {% endif %}
 </div>
+
+{% if review_debts %}
+<div class="section-title">
+  <h2>Vorschläge zur Prüfung</h2>
+</div>
+<p style="color: var(--muted); margin-top: -0.5rem;">
+  Automatisch aus Dokumenten erkannt, aber noch nicht bestätigt – zählen noch nicht zu
+  „Offene Schulden“. Bei Fehlern lieber verwerfen und den Eintrag über
+  <a href="/admin/finance/debt/add/">/admin/</a> korrekt anlegen.
+</p>
+<table>
+  <thead><tr><th>Gläubiger</th><th>Betrag</th><th>Fällig</th><th>Quelle</th><th></th></tr></thead>
+  <tbody>
+    {% for debt in review_debts %}
+    <tr>
+      <td>{{ debt.creditor.name }}</td>
+      <td>{{ debt.amount|floatformat:2 }} {{ debt.currency }}</td>
+      <td>{{ debt.due_date|default:"–" }}</td>
+      <td>
+        {% if debt.source_document %}
+        <a href="{{ debt.source_document.file.url }}">{{ debt.source_document.original_filename }}</a>
+        {% else %}–{% endif %}
+      </td>
+      <td style="white-space: nowrap;">
+        <form method="post" action="{% url 'finance:confirm_debt' debt.pk %}" style="display: inline;">
+          {% csrf_token %}
+          <button class="btn" type="submit">Übernehmen</button>
+        </form>
+        <form method="post" action="{% url 'finance:reject_debt' debt.pk %}" style="display: inline;">
+          {% csrf_token %}
+          <button type="submit" style="background: transparent; color: var(--danger); border: 1px solid var(--danger); border-radius: 8px; padding: 0.6rem 1.1rem; cursor: pointer;">Verwerfen</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
 
 <div class="section-title">
   <h2>Konten</h2>

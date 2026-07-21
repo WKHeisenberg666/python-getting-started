@@ -86,6 +86,12 @@ class Debt(models.Model):
     )
     notes = models.TextField(blank=True)
 
+    # True for debts auto-created from OCR/PDF-text extraction that a human hasn't confirmed
+    # yet. The heuristic extraction is not reliable enough on real scans to trust blindly, so
+    # these are excluded from dashboard totals and shown separately for review until confirmed.
+    needs_review = models.BooleanField(default=False)
+    excel_synced_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
