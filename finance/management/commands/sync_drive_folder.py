@@ -22,10 +22,14 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from ... import ingest
-from ...extraction import EXCEL_EXTENSIONS, IMAGE_EXTENSIONS, PDF_EXTENSIONS
+from ...extraction import IMAGE_EXTENSIONS, PDF_EXTENSIONS
 from ...models import Document, ProcessedFile
 
-SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | PDF_EXTENSIONS | EXCEL_EXTENSIONS
+# Only scanned letters (images/PDFs) are picked up automatically. Excel files in the drive
+# folder tend to be the user's own overview/backup spreadsheets rather than creditor letters,
+# and since ingestion no longer auto-creates debts from them (see finance/ingest.py), storing
+# copies of every backup/version as a "Document" was just clutter.
+SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | PDF_EXTENSIONS
 
 
 class Command(BaseCommand):
@@ -68,9 +72,17 @@ class Command(BaseCommand):
             self.stdout.write("Stopped.")
 
     def _scan(self, folder_path: Path):
+        excluded_dirs = {name.lower() for name in settings.PROTON_DRIVE_EXCLUDE_SUBFOLDERS}
         found = 0
         for file_path in sorted(folder_path.rglob("*")):
             if not file_path.is_file() or file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            # "~$foo.xlsx" etc. are transient lock files apps create while a file is open,
+            # not real documents. ".foo" covers OS/sync metadata files (e.g. .DS_Store).
+            if file_path.name.startswith("~$") or file_path.name.startswith("."):
+                continue
+            relative_parts = file_path.relative_to(folder_path).parts[:-1]
+            if excluded_dirs.intersection(part.lower() for part in relative_parts):
                 continue
 
             content = file_path.read_bytes()
@@ -91,13 +103,8 @@ class Command(BaseCommand):
 
             if result.duplicate:
                 self.stdout.write(f"  {rel_path}: bereits als Dokument vorhanden (übersprungen)")
-            elif result.debt:
-                self.stdout.write(
-                    f"  {rel_path}: importiert -> {result.debt.creditor.name} "
-                    f"{result.debt.amount} {result.debt.currency}"
-                )
             else:
-                self.stdout.write(f"  {rel_path}: importiert, kein Betrag erkannt")
+                self.stdout.write(f"  {rel_path}: importiert")
 
         if found:
             self.stdout.write(self.style.SUCCESS(f"{found} neue Datei(en) verarbeitet."))

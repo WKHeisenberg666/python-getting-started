@@ -207,10 +207,19 @@ MEDIA_ROOT = BASE_DIR / "media"
 # --- Finanz-Dashboard: Finance app configuration -----------------------------------------
 #
 # Local folder that Proton Drive Bridge/the Proton Drive desktop app syncs to disk. The
-# `sync_drive_folder` management command watches this folder and ingests any new files
-# (jpg/png/pdf/xlsx) it finds. Proton has no public third-party Drive API, so this local-sync
-# approach is used instead of talking to Proton's servers directly.
+# `sync_drive_folder` management command watches this folder and ingests any new scanned
+# letters (jpg/png/pdf) it finds. Proton has no public third-party Drive API, so this
+# local-sync approach is used instead of talking to Proton's servers directly.
 PROTON_DRIVE_SYNC_FOLDER = os.environ.get("PROTON_DRIVE_SYNC_FOLDER", "")
+
+# Subfolder names (anywhere in the tree, case-insensitive) to skip during the scan - for
+# folders that hold something other than creditor letters (e.g. leftover project files).
+# Comma-separated in the env var, e.g. "dashboard,venv".
+PROTON_DRIVE_EXCLUDE_SUBFOLDERS = [
+    name.strip()
+    for name in os.environ.get("PROTON_DRIVE_EXCLUDE_SUBFOLDERS", "dashboard,venv").split(",")
+    if name.strip()
+]
 
 # Excel workbook that mirrors the Debt table (the "Schuldenliste" the user already maintains
 # by hand). Every ingested document appends a row here in addition to the database record.

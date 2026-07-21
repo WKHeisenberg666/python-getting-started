@@ -60,6 +60,12 @@ Dokument trotzdem gespeichert, nur ohne extrahierten Text für Bilder.
   python manage.py sync_drive_folder --interval 300 # dauerhaft laufen lassen
   ```
 
+  Es werden nur Bilder (jpg/png) und PDFs automatisch gescannt – Excel-Dateien im Ordner
+  (Übersichten, Backups, Office-Lock-Dateien wie `~$....xlsx`) werden übersprungen, da sie
+  keine einzelnen Schreiben sind. Unterordner, die keine Schreiben enthalten (bei dir z.B.
+  `dashboard`, `venv`), werden über `PROTON_DRIVE_EXCLUDE_SUBFOLDERS` in `.env`
+  (kommagetrennt) ausgeschlossen.
+
   Jede neue Datei wird gespeichert und ihr Text extrahiert (PDF-Text bzw. OCR bei Bildern),
   damit du sie unter „Dokumente“ im Dashboard nachlesen kannst. Es wird **bewusst keine**
   Schuld automatisch angelegt: ein Test mit echten, teils schräg fotografierten Schreiben hat
